@@ -1,39 +1,81 @@
-# Single-Class COCO Training Quickstart
+# Быстрый старт обучения на одноклассовом COCO датасете
 
-This folder contains the helper scripts needed to train the fastest built-in Detectron2 instance-segmentation model (Mask R-CNN R50-FPN 1× schedule) on the custom COCO-style dataset with a single RLE-encoded class.
+Эта папка содержит вспомогательные скрипты для обучения самого быстрого встроенного модели Detectron2 для сегментации экземпляров (Mask R-CNN R50-FPN 1× schedule) на пользовательском датасете в формате COCO с одним классом, закодированным в формате RLE.
 
-## 1. Register the Dataset
+## Предварительные требования
 
-Ensure the dataset lives under `datasets/my_coco/` (or pass a custom path). The directory should contain:
+Перед обучением необходимо сгенерировать COCO датасет с помощью пайплайна генерации данных:
+
+1. Генерация HTML страниц: `data-generation/html_generator.py`
+2. Рендеринг скриншотов: `data-generation/playwright_render.py`
+3. Генерация метаданных: `data-generation/make_masks.py`
+4. Конвертация в формат COCO: `data-generation/coco_converter.py`
+
+Скрипт `coco_converter.py` создает следующую структуру:
 
 ```
-datasets/my_coco/
-  images/                      # PNG/JPG files referenced in the annotations
+data/coco/
+  train/                       # PNG изображения для обучающей выборки
+  val/                         # PNG изображения для валидационной выборки
   annotations/
-    instances_train.json       # COCO-format annotations with RLE `segmentation`
-    instances_val.json
+    instances_train.json       # Аннотации в формате COCO с RLE `segmentation`
+    instances_val.json         # Аннотации в формате COCO для валидации
 ```
 
-Before training, register the splits with Detectron2:
+## 1. Подготовка структуры датасета
+
+Функция `register_single_class_coco` ожидает, что все изображения находятся в одной директории (стандартный формат COCO), но `coco_converter.py` создает отдельные директории `train/` и `val/`. У вас есть два варианта:
+
+### Вариант A: Объединить изображения в одну директорию (Рекомендуется)
+
+Скопируйте все изображения в одну директорию `images/`:
+
+```bash
+# Создать директорию images
+mkdir -p data/coco/images
+
+# Скопировать изображения для обучения
+cp data/coco/train/*.png data/coco/images/
+
+# Скопировать изображения для валидации (у них разные имена, поэтому конфликтов не будет)
+cp data/coco/val/*.png data/coco/images/
+```
+
+Итоговая структура должна быть:
+
+```
+data/coco/
+  images/                      # Все изображения (train + val)
+  annotations/
+    instances_train.json       # Ссылается на изображения в images/
+    instances_val.json         # Ссылается на изображения в images/
+```
+
+## 1. Регистрация датасета
+
+Перед обучением зарегистрируйте разделы датасета в Detectron2:
 
 ```bash
 python train/register_dataset.py \
-  --dataset-root datasets/my_coco \
+  --dataset-root data/coco \
   --images-subdir images \
   --train-json annotations/instances_train.json \
   --val-json annotations/instances_val.json \
   --thing-classes target
 ```
 
-The script wires the dataset names `my_coco_train` / `my_coco_val` (override with `--train-name` / `--val-name`) and assigns the single class name `target`. Internally it uses `register_coco_instances`, so the resulting loaders fully support RLE masks when `cfg.INPUT.MASK_FORMAT = "bitmask"`.
+**Примечание:** Параметр `--images-subdir` должен указывать на директорию, содержащую все изображения (по умолчанию `images`). Оба JSON файла (train и val) ссылаются на изображения из этой единственной директории.
 
-## 2. Launch Training
+Скрипт регистрирует имена датасетов `my_coco_train` / `my_coco_val` (можно переопределить с помощью `--train-name` / `--val-name`) и присваивает имя класса `target`. Внутри используется `register_coco_instances`, поэтому результирующие загрузчики полностью поддерживают RLE маски, когда `cfg.INPUT.MASK_FORMAT = "bitmask"`.
 
-`train/train_single_class.py` is a thin wrapper around Detectron2’s `DefaultTrainer` that picks the lightweight Mask R-CNN R50-FPN 1× config and exposes flags tuned for a single class. Example command:
+## 3. Запуск обучения
+
+`train/train_single_class.py` — это тонкая обертка вокруг `DefaultTrainer` Detectron2, которая выбирает легковесную конфигурацию Mask R-CNN R50-FPN 1× и предоставляет флаги, настроенные для одного класса. Пример команды:
 
 ```bash
 python train/train_single_class.py \
-  --dataset-root datasets/my_coco \
+  --dataset-root data/coco \
+  --images-subdir images \
   --output-dir output/my_target \
   --ims-per-batch 4 \
   --max-iter 8000 \
@@ -41,19 +83,129 @@ python train/train_single_class.py \
   --num-gpus 1
 ```
 
-Key defaults:
-- Config file: `configs/COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_1x.yaml`
-- Pretrained weights: `mask_rcnn_R_50_FPN_1x` checkpoint from the Detectron2 model zoo
+**Важно:** Убедитесь, что используете те же пути `--dataset-root` и `--images-subdir`, которые использовали при регистрации датасета в шаге 2.
+
+### Ключевые значения по умолчанию
+
+- Файл конфигурации: `configs/COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_1x.yaml`
+- Предобученные веса: чекпоинт `mask_rcnn_R_50_FPN_1x` из модели Detectron2 model zoo
 - `MODEL.ROI_HEADS.NUM_CLASSES = 1`
-- `INPUT.MASK_FORMAT = "bitmask"` for COCO-style RLE segmentation
+- `INPUT.MASK_FORMAT = "bitmask"` для сегментации в формате RLE COCO
+- Имена датасетов: `my_coco_train` / `my_coco_val`
+- Имя класса: `target`
 
-Override `--thing-classes`, `--train-dataset`, or `--val-dataset` if you pick different names. All solver hyperparameters (`--base-lr`, `--max-iter`, `--lr-steps`, `--checkpoint-period`, `--eval-period`) are exposed so you can scale training time with dataset size.
+### Параметры настройки
 
-## 3. Verification & Monitoring
+Переопределите любые из этих значений по умолчанию по необходимости:
 
-- Sanity check annotations with `tools/visualize_data.py` or Detectron2’s demo notebook to confirm masks/classes are loaded correctly.
-- Training/evaluation logs and metrics land in `OUTPUT_DIR` (default `output/my_target`). Use TensorBoard or the built-in JSON stats for monitoring.
-- To run validation only: add `--eval-only --resume` to the previous command and point `--weights` to the checkpoint you want to evaluate.
+- `--thing-classes`: Изменить имена классов (по умолчанию: `target`)
+- `--train-dataset` / `--val-dataset`: Изменить имена датасетов (по умолчанию: `my_coco_train` / `my_coco_val`)
+- `--base-lr`: Скорость обучения (по умолчанию: 0.00025)
+- `--max-iter`: Максимальное количество итераций (по умолчанию: 5000)
+- `--lr-steps`: Шаги уменьшения скорости обучения (по умолчанию: 3500 4500)
+- `--checkpoint-period`: Сохранять чекпоинт каждые N итераций (по умолчанию: 1000)
+- `--eval-period`: Запускать оценку каждые N итераций (по умолчанию: 500)
+- `--ims-per-batch`: Изображений в батче (по умолчанию: 4)
 
-Following these steps will run the fastest Mask R-CNN variant that still supports instance masks, keeping training time minimal while satisfying the single-class COCO segmentation requirement.
+## 3. Проверка и мониторинг
 
+### Визуализация аннотаций
+
+Проверьте аннотации, чтобы убедиться, что маски/классы загружаются правильно:
+
+```bash
+python tools/visualize_data.py \
+  --source annotation \
+  --config-file configs/COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_1x.yaml \
+  --dataset my_coco_train \
+  --output-dir output/visualizations
+```
+
+### Мониторинг обучения
+
+Логи обучения/оценки и метрики сохраняются в `OUTPUT_DIR` (по умолчанию `output/my_target`). Используйте TensorBoard для мониторинга:
+
+```bash
+tensorboard --logdir output/my_target
+```
+
+Метрики также сохраняются как JSON файлы в выходной директории для программного доступа.
+
+### Запуск только валидации
+
+Для оценки обученной модели без обучения:
+
+```bash
+python train/train_single_class.py \
+  --dataset-root data/coco \
+  --images-subdir images \
+  --output-dir output/my_target \
+  --eval-only \
+  --resume \
+  --weights output/my_target/model_final.pth
+```
+
+## Полный пример workflow
+
+Вот полный пример от генерации данных до обучения:
+
+```bash
+# 1. Генерация HTML страниц
+python data-generation/html_generator.py \
+  --output-dir data/pages \
+  --num-pages 100
+
+# 2. Рендеринг скриншотов
+python data-generation/playwright_render.py \
+  --input-dir data/pages \
+  --output-dir data/screenshots \
+  --meta-dir data/meta
+
+# 3. Генерация масок (если необходимо)
+python data-generation/make_masks.py \
+  --meta-dir data/meta \
+  --output-dir data/masks
+
+# 4. Конвертация в формат COCO (автоматически создаст папку images/)
+python data-generation/coco_converter.py \
+  --meta-dir data/meta \
+  --screenshots-dir data/screenshots \
+  --output-dir data/coco
+
+# 5. Регистрация датасета
+python train/register_dataset.py \
+  --dataset-root data/coco \
+  --images-subdir images \
+  --thing-classes target
+
+# 6. Обучение модели
+python train/train_single_class.py \
+  --dataset-root data/coco \
+  --images-subdir images \
+  --output-dir output/my_target \
+  --num-gpus 1
+```
+
+## Решение проблем
+
+### Изображения не найдены
+
+Если вы видите ошибки о недостающих изображениях:
+
+- Убедитесь, что все изображения находятся в директории `images/` (или в директории, указанной в `--images-subdir`)
+- Проверьте, что имена файлов изображений в JSON аннотациях совпадают с фактическими именами файлов в директории images
+- Убедитесь, что пути относительны к `dataset-root`
+
+### Ошибки регистрации датасета
+
+- Убедитесь, что `--dataset-root` указывает на директорию, содержащую `images/` и `annotations/`
+- Проверьте существование JSON файлов: `annotations/instances_train.json` и `annotations/instances_val.json`
+- Убедитесь, что директория images существует и содержит PNG файлы
+
+### Ошибки обучения
+
+- Убедитесь, что датасет зарегистрирован перед началом обучения
+- Проверьте, что `--train-dataset` и `--val-dataset` совпадают с именами, использованными при регистрации
+- Убедитесь, что GPU доступен, если используете `--num-gpus > 0`
+
+Следуя этим шагам, вы запустите самую быструю версию Mask R-CNN, которая все еще поддерживает маски экземпляров, минимизируя время обучения при соблюдении требования одноклассовой сегментации COCO.

@@ -341,6 +341,49 @@ def convert_to_coco(meta_dir: Path, images_source_dir: Path, output_dir: Path,
         print("Warning: Some images were missing in screenshots directory. Training may fail.")
 
 
+def combine_images_to_single_dir(output_dir: Path):
+    """Combine images from train/ and val/ directories into a single images/ directory.
+    
+    Args:
+        output_dir: Root directory containing train/ and val/ subdirectories
+    """
+    train_dir = output_dir / 'train'
+    val_dir = output_dir / 'val'
+    images_dir = output_dir / 'images'
+    
+    # Create images directory
+    if images_dir.exists():
+        print(f"Cleaning existing images directory: {images_dir}")
+        shutil.rmtree(images_dir)
+    images_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Copy train images
+    train_images = list(train_dir.glob('*.png')) if train_dir.exists() else []
+    if train_images:
+        print(f"Copying {len(train_images)} images from train/ to images/...")
+        for img_path in tqdm(train_images, desc="Copying train images"):
+            shutil.copy2(img_path, images_dir / img_path.name)
+    else:
+        print("Warning: No images found in train/ directory")
+    
+    # Copy val images
+    val_images = list(val_dir.glob('*.png')) if val_dir.exists() else []
+    if val_images:
+        print(f"Copying {len(val_images)} images from val/ to images/...")
+        for img_path in tqdm(val_images, desc="Copying val images"):
+            target_path = images_dir / img_path.name
+            # Check for conflicts (shouldn't happen, but just in case)
+            if target_path.exists():
+                print(f"Warning: Image {img_path.name} already exists in images/, skipping")
+            else:
+                shutil.copy2(img_path, target_path)
+    else:
+        print("Warning: No images found in val/ directory")
+    
+    total_images = len(list(images_dir.glob('*.png')))
+    print(f"\nCombined {total_images} images into {images_dir}/")
+
+
 def main():
     parser = argparse.ArgumentParser(description='Convert metadata to COCO format')
     parser.add_argument('--meta-dir', type=str, default='data/meta', help='Directory with metadata JSON files')
@@ -362,7 +405,11 @@ def main():
     print("\nConverting val split...")
     convert_to_coco(meta_dir, screenshots_dir, output_dir, 'val', args.num_workers)
     
-    print("\nDone! COCO dataset created.")
+    # Combine images into single images/ directory
+    print("\nCombining images into single images/ directory...")
+    combine_images_to_single_dir(output_dir)
+    
+    print("\nDone! COCO dataset created with images/ directory ready for training.")
 
 
 if __name__ == '__main__':

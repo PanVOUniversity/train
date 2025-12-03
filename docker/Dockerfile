@@ -29,6 +29,7 @@ RUN wget https://bootstrap.pypa.io/pip/3.6/get-pip.py && \
 # install dependencies
 # See https://pytorch.org/ for other options if you use a different version of CUDA
 RUN pip install --user tensorboard cmake onnx   # cmake from apt-get is too old
+RUN pip install --user "Pillow<10.0.0"  # Compatible with detectron2 v0.6
 RUN pip install --user torch==1.10 torchvision==0.11.1 -f https://download.pytorch.org/whl/cu111/torch_stable.html
 
 RUN pip install --user 'git+https://github.com/facebookresearch/fvcore'
@@ -54,6 +55,9 @@ RUN cd detectron2_repo && pip install --user -e .
 # Set a fixed model cache directory.
 ENV FVCORE_CACHE="/tmp"
 WORKDIR /home/appuser/detectron2_repo
+RUN pip install playwright
+RUN playwright install chromium
+RUN playwright install-deps 
 
 # run detectron2 under user "appuser":
 # wget http://images.cocodataset.org/val2017/000000439715.jpg -O input.jpg
