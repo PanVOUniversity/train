@@ -18,7 +18,10 @@ RUN echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 USER appuser
 WORKDIR /home/appuser
 
-ENV PATH="/home/appuser/.local/bin:${PATH}"
+# Ensure CUDA environment variables are available for appuser
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH="/home/appuser/.local/bin:${CUDA_HOME}/bin:${PATH}"
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${CUDA_HOME}/lib:${LD_LIBRARY_PATH}
 RUN wget https://bootstrap.pypa.io/pip/3.6/get-pip.py && \
 	python3 get-pip.py --user && \
 	rm get-pip.py
@@ -37,8 +40,10 @@ ENV FORCE_CUDA="1"
 # because inside `docker build`, there is no way to tell which architecture will be used.
 ARG TORCH_CUDA_ARCH_LIST="Kepler;Kepler+Tesla;Maxwell;Maxwell+Tegra;Pascal;Volta;Turing"
 ENV TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST}"
-RUN python -c 'import torch; from torch.utils.cpp_extension import CUDA_HOME; print(torch.cuda.is_available(), CUDA_HOME)' \
-    | tee /output.txt
+# Verify CUDA installation (torch.cuda.is_available() will be False during build as GPU is not accessible)
+# This is expected and normal - CUDA extensions will still compile correctly
+RUN python -c 'import torch; from torch.utils.cpp_extension import CUDA_HOME; import os; print("CUDA_HOME:", CUDA_HOME); print("LD_LIBRARY_PATH:", os.environ.get("LD_LIBRARY_PATH", "not set")); print("torch.cuda.is_available():", torch.cuda.is_available()); print("CUDA_HOME from torch:", CUDA_HOME)' \
+    | tee /home/appuser/output.txt
 
 RUN pip install --user -e detectron2_repo
 
