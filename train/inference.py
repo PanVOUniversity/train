@@ -48,6 +48,18 @@ def setup_cfg(args: argparse.Namespace):
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = args.num_classes
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = args.confidence_threshold
     
+    # Установка устройства (CPU или GPU)
+    if args.device:
+        cfg.MODEL.DEVICE = args.device
+    else:
+        # Автоматическое определение: используем CPU если CUDA недоступна
+        import torch
+        if torch.cuda.is_available():
+            cfg.MODEL.DEVICE = "cuda"
+        else:
+            cfg.MODEL.DEVICE = "cpu"
+            print("CUDA недоступна, используется CPU")
+    
     # Установка метаданных для визуализации
     # Используем уникальное имя датасета для инференса, чтобы избежать конфликтов
     # с встроенными датасетами COCO
@@ -113,6 +125,7 @@ def main():
     parser.add_argument("--num-classes", default=1, type=int, help="Количество классов")
     parser.add_argument("--thing-classes", nargs="+", default=["frame"], type=str, help="Имена классов")
     parser.add_argument("--confidence-threshold", default=0.5, type=float, help="Порог уверенности для детекций")
+    parser.add_argument("--device", default=None, type=str, choices=["cpu", "cuda"], help="Устройство для инференса (cpu/cuda). По умолчанию определяется автоматически")
     
     args = parser.parse_args()
     

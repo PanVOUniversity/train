@@ -166,6 +166,16 @@ python train/inference.py \
 - `--num-classes`: Количество классов (по умолчанию: 1)
 - `--thing-classes`: Имена классов (по умолчанию: `frame`)
 - `--confidence-threshold`: Порог уверенности для детекций (по умолчанию: 0.5)
+- `--device`: Устройство для инференса (`cpu` или `cuda`). По умолчанию определяется автоматически
+
+**Запуск на CPU:**
+```bash
+python train/inference.py \
+  --image path/to/image.png \
+  --weights model_final.pth \
+  --device cpu \
+  --output-dir output/inference
+```
 
 **Результаты сохраняются в:**
 - `output/inference/masks/` — отдельные маски для каждого обнаруженного объекта (`image_mask_0.png`, `image_mask_1.png`, ...)
@@ -297,5 +307,33 @@ pip install 'setuptools<65' setuptools-scm
 ```
 
 **Важно:** Если ошибка все еще возникает даже после установки `setuptools<65`, скрипт автоматически продолжит работу без TensorBoard логирования (метрики все равно будут сохраняться в JSON формате в файле `metrics.json`). Это не критично для обучения - TensorBoard используется только для визуализации метрик.
+
+### Запуск модели на Windows с CPU
+
+Для запуска обученной модели на Windows компьютере с CPU см. подробный гайд: [WINDOWS_CPU_SETUP.md](../WINDOWS_CPU_SETUP.md)
+
+**Краткая инструкция:**
+
+1. Скопируйте модель с сервера:
+   ```bash
+   scp -i .\ssh\key root@91.236.199.226:/tmp/model_final.pth ./
+   ```
+
+2. Установите Detectron2 (рекомендуется через WSL2):
+   ```bash
+   # В WSL2
+   pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+   pip3 install 'git+https://github.com/facebookresearch/detectron2.git'
+   ```
+
+3. Запустите инференс:
+   ```bash
+   python train/inference.py --image image.png --weights model_final.pth --device cpu
+   ```
+
+**Требования к ресурсам:**
+- RAM: 4-8 GB (рекомендуется 8+ GB)
+- CPU: Современный процессор (Intel Core i5/i7 или AMD Ryzen 5/7)
+- Время обработки: 5-30 секунд на изображение (зависит от размера)
 
 Следуя этим шагам, вы запустите самую быструю версию Mask R-CNN, которая все еще поддерживает маски экземпляров, минимизируя время обучения при соблюдении требования одноклассовой сегментации COCO.
