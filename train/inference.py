@@ -49,11 +49,22 @@ def setup_cfg(args: argparse.Namespace):
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = args.confidence_threshold
     
     # Установка метаданных для визуализации
-    if len(cfg.DATASETS.TEST) == 0:
-        cfg.DATASETS.TEST = ("__unused__",)
+    # Используем уникальное имя датасета для инференса, чтобы избежать конфликтов
+    # с встроенными датасетами COCO
+    inference_dataset_name = "__inference__"
+    cfg.DATASETS.TEST = (inference_dataset_name,)
     
-    metadata = MetadataCatalog.get(cfg.DATASETS.TEST[0])
-    metadata.thing_classes = args.thing_classes
+    # Устанавливаем метаданные для визуализации
+    # Это безопасно, так как мы используем уникальное имя датасета
+    metadata = MetadataCatalog.get(inference_dataset_name)
+    # Проверяем, можно ли установить метаданные (они могут быть уже установлены)
+    try:
+        if not hasattr(metadata, 'thing_classes') or not metadata.thing_classes:
+            metadata.thing_classes = args.thing_classes
+    except (AttributeError, AssertionError):
+        # Если метаданные уже установлены и конфликтуют, просто пропускаем
+        # Визуализация будет использовать существующие метаданные
+        pass
     
     cfg.freeze()
     return cfg
