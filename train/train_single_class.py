@@ -4,7 +4,7 @@ Launch Mask R-CNN training on the single-class COCO dataset generated in this pr
 Example:
     python train/train_single_class.py \
         --dataset-root datasets/my_coco \
-        --output-dir output/my_target \
+        --output-dir output/my_frame \
         --num-gpus 1
 """
 
@@ -12,12 +12,28 @@ from __future__ import annotations
 
 import argparse
 import os
+import warnings
 from typing import List
+
+# Explicitly import setuptools to ensure distutils is available
+# This is needed for older PyTorch/TensorBoard versions that use distutils.version
+try:
+    import setuptools  # noqa: F401
+except ImportError:
+    pass
+
+# Suppress common warnings that don't affect functionality
+warnings.filterwarnings("ignore", category=UserWarning, message=".*NumPy array is not writeable.*")
+warnings.filterwarnings("ignore", category=UserWarning, message=".*__floordiv__ is deprecated.*")
+warnings.filterwarnings("ignore", category=UserWarning, message=".*torch.meshgrid.*")
+warnings.filterwarnings("ignore", category=UserWarning, message=".*Skip loading parameter.*")
 
 from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.config import get_cfg
 from detectron2.engine import DefaultTrainer, default_argument_parser, default_setup, launch
 from detectron2.evaluation import COCOEvaluator, DatasetEvaluators
+from detectron2.utils.events import CommonMetricPrinter, JSONWriter
+from detectron2.utils.file_io import PathManager
 
 from train.register_dataset import register_single_class_coco
 
@@ -32,6 +48,86 @@ class Trainer(DefaultTrainer):
     def build_evaluator(cls, cfg, dataset_name, output_folder=None):
         evaluators = [COCOEvaluator(dataset_name, output_dir=output_folder)]
         return DatasetEvaluators(evaluators)
+    
+    def build_writers(self):
+        """
+        Build a list of writers to be used. This version safely handles TensorBoard import errors.
+        Overrides the parent method to avoid distutils/tensorboard issues.
+        """
+        output_dir = self.cfg.OUTPUT_DIR
+        max_iter = self.cfg.SOLVER.MAX_ITER
+        PathManager.mkdirs(output_dir)
+        writers = [
+            CommonMetricPrinter(max_iter),
+            JSONWriter(os.path.join(output_dir, "metrics.json")),
+        ]
+        
+        # Try to add TensorBoard writer, but don't fail if it's not available
+        # Check distutils availability first (required by older tensorboard versions)
+        # Try importing setuptools first to ensure distutils is available
+        distutils_available = False
+        try:
+            # First try to import setuptools to activate distutils
+            import setuptools  # noqa: F401
+            import distutils.version
+            distutils_available = True
+        except (ImportError, AttributeError):
+            # distutils not available - skip TensorBoard silently
+            pass
+        
+        if not distutils_available:
+            # Silently skip TensorBoard if distutils is not available
+            return writers
+        
+        # Try to import and use TensorBoard writer
+        try:
+            # Import TensorboardXWriter class (this should be safe)
+            from detectron2.utils.events import TensorboardXWriter
+            
+            # Try to create instance - this may fail when accessing _writer property
+            # We need to catch the error during instantiation or first use
+            tb_writer = TensorboardXWriter(output_dir)
+            
+            # Try to access _writer property to trigger the import and catch any errors early
+            # This will fail if torch.utils.tensorboard can't import distutils.version
+            try:
+                _ = tb_writer._writer  # This triggers the cached_property
+                writers.append(tb_writer)
+            except (ImportError, AttributeError) as tb_err:
+                # TensorBoard import failed - skip it
+                error_msg = str(tb_err)
+                if "distutils" in error_msg.lower() or "version" in error_msg.lower():
+                    warnings.warn(
+                        "TensorBoard writer unavailable due to distutils issue. "
+                        "To enable TensorBoard, install setuptools<65: pip install 'setuptools<65'\n"
+                        "Continuing without TensorBoard logging. Metrics will still be saved to JSON.",
+                        UserWarning
+                    )
+                else:
+                    warnings.warn(
+                        f"Could not initialize TensorBoard writer: {error_msg}. "
+                        "Continuing without TensorBoard logging. Metrics will still be saved to JSON.",
+                        UserWarning
+                    )
+                    
+        except (ImportError, AttributeError, Exception) as e:
+            # Catch any other errors during import or instantiation
+            error_msg = str(e)
+            if "distutils" in error_msg.lower() or "version" in error_msg.lower():
+                warnings.warn(
+                    "TensorBoard writer unavailable due to distutils issue. "
+                    "To enable TensorBoard, install setuptools<65: pip install 'setuptools<65'\n"
+                    "Continuing without TensorBoard logging. Metrics will still be saved to JSON.",
+                    UserWarning
+                )
+            else:
+                warnings.warn(
+                    f"Could not initialize TensorBoard writer: {error_msg}. "
+                    "Continuing without TensorBoard logging. Metrics will still be saved to JSON.",
+                    UserWarning
+                )
+        
+        return writers
 
 
 def setup_cfg(args: argparse.Namespace):
@@ -59,6 +155,20 @@ def setup_cfg(args: argparse.Namespace):
 
 
 def _register_datasets(args: argparse.Namespace) -> None:
+    from detectron2.data import DatasetCatalog
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    # Skip registration if datasets are already registered (e.g., when resuming)
+    # This allows resuming training without needing to specify dataset paths again
+    if args.train_dataset in DatasetCatalog.list() and args.val_dataset in DatasetCatalog.list():
+        logger.info(
+            f"Datasets '{args.train_dataset}' and '{args.val_dataset}' already registered. "
+            "Skipping registration."
+        )
+        return
+    
     register_single_class_coco(
         dataset_root=args.dataset_root,
         images_subdir=args.images_subdir,
@@ -100,8 +210,8 @@ def extend_parser(parser):
     parser.add_argument("--val-json", default="annotations/instances_val.json", type=str)
     parser.add_argument("--train-dataset", default="my_coco_train", type=str)
     parser.add_argument("--val-dataset", default="my_coco_val", type=str)
-    parser.add_argument("--thing-classes", nargs="+", default=["target"], type=str)
-    parser.add_argument("--class-name", default="target", type=str, help="Deprecated alias.")
+    parser.add_argument("--thing-classes", nargs="+", default=["frame"], type=str)
+    parser.add_argument("--class-name", default="frame", type=str, help="Deprecated alias.")
 
     parser.add_argument("--num-classes", default=1, type=int)
     parser.add_argument("--ims-per-batch", default=4, type=int)
@@ -117,7 +227,7 @@ def extend_parser(parser):
         type=str,
         help="Detectron2 checkpoint to bootstrap the model.",
     )
-    parser.add_argument("--output-dir", default="output/my_target", type=str)
+    parser.add_argument("--output-dir", default="output/my_frame", type=str)
     parser.add_argument(
         "--filter-empty",
         action="store_false",

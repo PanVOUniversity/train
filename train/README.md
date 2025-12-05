@@ -145,6 +145,75 @@ python train/train_single_class.py \
   --weights output/my_target/model_final.pth
 ```
 
+### Запуск инференса на изображении
+
+Для запуска обученной модели на вашем изображении и сохранения масок:
+
+```bash
+python train/inference.py \
+  --image path/to/your/image.png \
+  --weights output/my_target/model_final.pth \
+  --output-dir output/inference \
+  --num-classes 1 \
+  --thing-classes frame \
+  --confidence-threshold 0.5
+```
+
+**Параметры:**
+- `--image`: Путь к входному изображению
+- `--weights`: Путь к обученной модели (`model_final.pth`)
+- `--output-dir`: Директория для сохранения результатов (по умолчанию: `output/inference`)
+- `--num-classes`: Количество классов (по умолчанию: 1)
+- `--thing-classes`: Имена классов (по умолчанию: `frame`)
+- `--confidence-threshold`: Порог уверенности для детекций (по умолчанию: 0.5)
+
+**Результаты сохраняются в:**
+- `output/inference/masks/` — отдельные маски для каждого обнаруженного объекта (`image_mask_0.png`, `image_mask_1.png`, ...)
+- `output/inference/masks/image_combined_mask.png` — объединенная цветная маска всех объектов
+- `output/inference/image_visualization.png` — визуализация с наложенными масками и bounding boxes
+
+### Просмотр метрик обученной модели
+
+Для просмотра метрик обучения и оценки:
+
+```bash
+python train/view_metrics.py --output-dir output/my_target
+```
+
+Скрипт покажет:
+- Метрики обучения (loss, learning rate, время итерации и т.д.)
+- Статистику по всему процессу обучения
+- Результаты оценки (AP, AP50, AP75 и т.д.), если они доступны
+- Информацию о модели
+
+Для экспорта метрик в CSV:
+
+```bash
+python train/view_metrics.py --output-dir output/my_target --export-csv metrics.csv
+```
+
+**Альтернативные способы просмотра метрик:**
+
+1. **Прямой просмотр JSON файла:**
+   ```bash
+   # Просмотр последних метрик
+   tail -n 5 output/my_target/metrics.json | jq .
+   
+   # Просмотр конкретной метрики (например, loss_mask)
+   cat output/my_target/metrics.json | jq -r '.loss_mask'
+   ```
+
+2. **TensorBoard (если доступен):**
+   ```bash
+   tensorboard --logdir output/my_target
+   ```
+
+3. **Просмотр лога обучения:**
+   ```bash
+   # Поиск метрик оценки в логе
+   grep "copypaste:" output/my_target/log.txt
+   ```
+
 ## Полный пример workflow
 
 Вот полный пример от генерации данных до обучения:
@@ -207,5 +276,26 @@ python train/train_single_class.py \
 - Убедитесь, что датасет зарегистрирован перед началом обучения
 - Проверьте, что `--train-dataset` и `--val-dataset` совпадают с именами, использованными при регистрации
 - Убедитесь, что GPU доступен, если используете `--num-gpus > 0`
+
+### Ошибка `AttributeError: module 'distutils' has no attribute 'version'`
+
+Если вы видите ошибку о недоступном `distutils.version`, это может происходить по нескольким причинам:
+
+1. **Python 3.12+**: `distutils` был удален из стандартной библиотеки Python
+2. **Python 3.8-3.11 с setuptools >= 65**: Начиная с версии 65, `setuptools` больше не включает `distutils`
+
+**Решение:** Установите совместимую версию `setuptools` (версия < 65):
+
+```bash
+pip install 'setuptools<65'
+```
+
+Или, если нужна последняя версия `setuptools`, можно установить пакет `setuptools-scm`, который может помочь:
+
+```bash
+pip install 'setuptools<65' setuptools-scm
+```
+
+**Важно:** Если ошибка все еще возникает даже после установки `setuptools<65`, скрипт автоматически продолжит работу без TensorBoard логирования (метрики все равно будут сохраняться в JSON формате в файле `metrics.json`). Это не критично для обучения - TensorBoard используется только для визуализации метрик.
 
 Следуя этим шагам, вы запустите самую быструю версию Mask R-CNN, которая все еще поддерживает маски экземпляров, минимизируя время обучения при соблюдении требования одноклассовой сегментации COCO.

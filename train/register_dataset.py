@@ -37,7 +37,7 @@ def register_single_class_coco(
     val_json: str | Path = "annotations/instances_val.json",
     train_name: str = "my_coco_train",
     val_name: str = "my_coco_val",
-    thing_classes: Iterable[str] = ("target",),
+    thing_classes: Iterable[str] = ("frame",),
 ) -> tuple[str, str]:
     """
     Register COCO-format train/val splits that each contain a single foreground class.
@@ -49,7 +49,7 @@ def register_single_class_coco(
         val_json: Relative path to the validation annotation json.
         train_name: DatasetCatalog name for the training split.
         val_name: DatasetCatalog name for the validation split.
-        thing_classes: Iterable of class names; by default a single entry ``"target"``.
+        thing_classes: Iterable of class names; by default a single entry ``"frame"``.
 
     Returns:
         Tuple of the (train_name, val_name) for convenience.
@@ -86,8 +86,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--thing-classes",
         nargs="+",
-        default=["target"],
-        help="Space-separated list of class names. Defaults to a single 'target' class.",
+        default=["frame"],
+        help="Space-separated list of class names. Defaults to a single 'frame' class.",
     )
     return parser.parse_args()
 
